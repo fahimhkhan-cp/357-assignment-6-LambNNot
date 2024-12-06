@@ -38,6 +38,11 @@ typedef struct{
 
 }Entry;
 
+typedef struct{
+    Entry* entries; //Array of Entry pointers
+    int size;
+}EntryArray;
+
 /*Validates argument files existence*/
 int validate_args(int argc, char* argv[]){
     if(argc < 3){
@@ -89,7 +94,7 @@ void updateEntry(int field_index, char* value){
 }
 
 /*Parse data from data_file_name and store into entries*/
-void process_demographics(char *file_name, Entry** entries){
+EntryArray* process_demographics(char *file_name, EntryArray* entries){
     //Open file
     FILE *file;
     if((file=fopen(file_name, "r"))==NULL){
@@ -111,27 +116,31 @@ void process_demographics(char *file_name, Entry** entries){
         int column = 0; //Represents column via index
         int parsing_index = 0; //Used to determine which field we are currently parsing
 
-        //Process fields by delimiter
+        // Process fields by delimiter
         char *value;
         while((value = strsep(&string_copy,",")) != NULL){
-            //Clean quotes off value
+            // Clean quotes off value
             value = dequote(value);
 
+            // Check if value is something we're interested in
             if(is_first_row){
-                // Fill relevant_columns with indices of irrelevant data fields
+                // Fill relevant_columns with indices of relevant data fields
                 if(relevant_field(value)){
                     relevant_columns[relevant_index++] = column;
                 }
 
             }else{
-                // Parsing Logic
-                // Because the order of the columns never change,
-                // We can trust that slowly traversing though parsing index is safe
-                Entry new_entry;
+                // Check if value is important
+
+                // Because the order of the columns never change, traversing though parsing index is safe
                 if(column == relevant_columns[parsing_index]){
                     //Relevant column identified
                     printf("Row %d, Column %d : %s\n", parsing_index, column, value);
                     parsing_index++;
+
+                    // TODO: Parsing Logic
+                    
+
                 }
                 
             }
@@ -145,11 +154,11 @@ void process_demographics(char *file_name, Entry** entries){
 
     //Close file
     fclose(file);
-    return;
+    return entries;
 }
 
 /*Parse operations from file_name to perform on entries*/
-void process_operations(char *file_name, Entry* entries){
+void process_operations(char *file_name, EntryArray* entries){
     return;
 }
 
@@ -159,13 +168,19 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
-    Entry *entries; //Stores entries post-demographics processing for use in operations processing
+    EntryArray *entries_array = malloc(sizeof(EntryArray)); //Stores entries post-demographics processing for use in operations processing
+    entries_array->entries = NULL;
+    entries_array->size = 0;
 
     //Process demographics file
-    process_demographics(argv[DATA_FILE_IDX], &entries);
+    process_demographics(argv[DATA_FILE_IDX], entries_array);
 
     //Process operations file
-    process_operations(argv[OPS_FILE_IDX], entries);
+    process_operations(argv[OPS_FILE_IDX], entries_array);
+
+    // Free EntryArray & associated allocated memory
+    free(entries_array->entries); //Every entry is statically sized, so there is no need to free them individually
+    free(entries_array);
 
     return 0;
 }
