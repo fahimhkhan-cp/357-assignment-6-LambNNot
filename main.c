@@ -8,8 +8,8 @@
 #define OPS_FILE_IDX 2
 
 //Enumerations of Subfields within Categories for Accessing Entry categories via corresponding index
-const char* EducationFields[] = {"Bachelor's Degree or Higher", 
-                                    "High School or Higher"};
+const char* EducationFields[] = {"Education.Bachelor's Degree or Higher",
+                                "Education.High School or Higher"};
 const char* EthnicitiesFields[] = {"Ethnicities.American Indian and Alaska Native Alone",
                                     "Ethnicities.Asian Alone",
                                     "Ethnicities.Black Alone",
@@ -23,9 +23,18 @@ const char *IncomeFields[] = {"Income.Median Household Income",
 
 const char* SignificantFields[] = {"County", 
                                     "State", 
-                                    "Education", 
-                                    "Ethnicities", 
-                                    "Income", 
+                                    "Education.Bachelor's Degree or Higher",
+                                    "Education.High School or Higher",
+                                    "Ethnicities.American Indian and Alaska Native Alone",
+                                    "Ethnicities.Asian Alone",
+                                    "Ethnicities.Black Alone",
+                                    "Ethnicities.Hispanic or Latino",
+                                    "Ethnicities.Native Hawaiian and Other Pacific Islander Alone",
+                                    "Ethnicities.Two or More Races","Ethnicities.White Alone",
+                                    "Ethnicities.White Alone not Hispanic or Latino", 
+                                    "Income.Median Household Income",
+                                    "Income.Per Capita Income",
+                                    "Income.Persons Below Poverty Level",
                                     "Population.2014 Population"};
 
 typedef struct{
@@ -52,8 +61,8 @@ Entry *create_entry(){
         exit(1);
     }
 
-    new_entry->county = strdup("Placeholder");
-    new_entry->state = strdup("Placeholder");
+    new_entry->county = NULL;
+    new_entry->state = NULL;
     for(int i=0;i<2;i++){
         new_entry->education[i] = 0.0;
     }
@@ -70,7 +79,15 @@ Entry *create_entry(){
 
 /*Frees all dynamically allocated memory for EntryArray*/
 void free_entry_array(EntryArray* array){
-
+    for(int i=0; i<array->n; i++){
+        // Free all dynamically allocated memory within each entry, followed by the entry itself
+        printf("Freeing: %s\n", array->entries[i]->county);
+        free(array->entries[i]->county);
+        free(array->entries[i]->state);
+        free(array->entries[i]);
+    }
+    free(array->entries);
+    free(array);
 }
 
 /*Validates argument files existence*/
@@ -96,8 +113,8 @@ int validate_args(int argc, char* argv[]){
 /*Check if given field is relevant to this assignment
 Returns 1 if so; 0 otherwise*/
 int relevant_field(char* field){
-    for(int i=0;i<6;i++){
-        if(strncmp(field, SignificantFields[i], strlen(SignificantFields[i]))==0){
+    for(int i=0;i<16;i++){
+        if(strcmp(field, SignificantFields[i])==0){
             return 1;
         }
     }
@@ -142,9 +159,66 @@ void append_entry(EntryArray* array, Entry* new_entry){
     array->entries[array->n++] = new_entry;
 }
 
-/*Update entry values*/
-void update_entry(Entry* entry, char* field, char* value){
+/*Converts strings to float*/
+float str_to_float(char *string){
+    char* endptr;
+    float result = strtof(string, &endptr);
+    if(*endptr!='\0'){
+        perror("atof");
+        exit(1);
+    }
+    return result;
+}
 
+/*Update entry values*/
+void update_entry(Entry* entry, const char* field, char* value){
+    if(strncmp(field, "County", strlen("County"))==0){
+        // Code for "County" Field
+        if(entry->county != NULL){
+            free(entry->county);
+        }
+        entry->county = strdup(value);
+    }else if(strncmp(field, "State", strlen("State"))==0){ // Code for "State" Field
+        if(entry->state != NULL){
+            free(entry->state);
+        }
+        entry->state = strdup(value);
+    }else if(strncmp(field, "Education", strlen("Education"))==0){ // Code for "Education Field"
+        // Identify subfield
+        int subfield;
+        for(subfield=0; subfield<2; subfield++){
+            if(strcmp(field, EducationFields[subfield])==0){
+                break;
+            }
+        }
+        //Convert value to a float to store in entry
+        entry->education[subfield] = str_to_float(value);
+    }else if(strncmp(field, "Ethnicities", strlen("Ethnicities"))==0){ // Code for "Ethnicities" field
+        // Identify subfield
+        int subfield;
+        for(subfield=0; subfield<2; subfield++){
+            if(strcmp(field, EthnicitiesFields[subfield])==0){
+                break;
+            }
+        }
+        //Convert value to a float to store in entry
+        entry->ethnicities[subfield] = str_to_float(value);
+    }else if(strncmp(field, "Income", strlen("Income"))==0){ // Code for "Income" field
+        // Identify subfield
+        int subfield;
+        for(subfield=0; subfield<2; subfield++){
+            if(strcmp(field, IncomeFields[subfield])==0){
+                break;
+            }
+        }
+        //Convert value to a float to store in entry
+        entry->income[subfield] = atoi(value);
+    }else if(strncmp(field, "Population.2014", strlen("Population.2014"))==0){ // Code for "Population.2014" field
+        entry->population2014 = atoi(value);
+    }else{
+        perror("update_entry");
+        exit(1);
+    }
 }
 
 /*Parse data from data_file_name and store into entries*/
@@ -156,7 +230,7 @@ EntryArray* process_demographics(char *file_name, EntryArray* entries){
         exit(1);
     }
     int is_first_row = 1; // Tracks whether or not we're on the first line of csv (Column Headers)
-    int relevant_columns[15]; // Array that stores indices representing relevant columns
+    int relevant_columns[16]; // Array that stores indices representing relevant columns
     int relevant_index = 0; //Pointer used to traverse thru relevant indices
 
     //Process file line-by-line
@@ -168,16 +242,16 @@ EntryArray* process_demographics(char *file_name, EntryArray* entries){
         char *string_copy = strdup(buffer); //Duplicate string using malloc so I can use strsep
         char *free_pointer = string_copy;
         int column = 0; //Represents column via index
-        int parsing_index = 0; //Used to determine which field we are currently parsing
+        int field_index = 0; //Used to determine which field in SignificantField to currently parse
 
         // Construct Entry
-        Entry *new_entry;
+        Entry *new_entry = NULL;
         if(!is_first_row){
             new_entry = create_entry();
         }
 
         // Parse Data into Entry
-        char *value;
+        char *value = NULL;
         while((value = strsep(&string_copy,",")) != NULL){ //Read through columns using strsep
             // Clean quotes off value
             value = dequote(value);
@@ -192,17 +266,18 @@ EntryArray* process_demographics(char *file_name, EntryArray* entries){
                 }
 
             }else{
-                // Because the order of the columns never change, traversing though parsing index is safe
-                if(column == relevant_columns[parsing_index]){
+                // Because the order of the columns never change, traversing though field index is safe
+                if(column == relevant_columns[field_index]){
                     // Relevant column identified
-                    printf("Row %d, Column %d : %s\n", parsing_index, column, value);
-                    parsing_index++;
+                    // printf("Field: %s | Column %d:  %s\n", SignificantFields[field_index], column, value);
 
                     // TODO: Parsing Logic
-                    // update_entry(new_entry, SignificantFields[parsing_index], value);
+                    //printf("Updating: %s for %s\n", value, SignificantFields[field_index]);
+                    update_entry(new_entry, SignificantFields[field_index], value);
+                    field_index++;
                 }
             }
-            column++; //Increment counter per token
+            column++; //Increment column counter per token
         }
         //Free malloc'ed string
         free(free_pointer);
@@ -244,6 +319,7 @@ int main(int argc, char* argv[]){
     process_operations(argv[OPS_FILE_IDX], entries_array);
 
     // Free All EntryArray Memory
+    free_entry_array(entries_array);
 
     return 0;
 }
