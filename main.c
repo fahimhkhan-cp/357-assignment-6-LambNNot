@@ -80,6 +80,23 @@ Entry *create_entry(){
     return new_entry;
 }
 
+/*Deletes an entry from EntryArray*/
+void remove_entry(EntryArray* array, int index) {
+
+    // Free the memory of the entry to be deleted
+    free(array->entries[index]->county);  // Assuming the county field is dynamically allocated
+    free(array->entries[index]->state);   // Assuming the state field is dynamically allocated
+    free(array->entries[index]);          // Free the entire Entry object
+
+    // Shift the remaining entries in the array to fill the gap
+    for (int i = index; i < array->n - 1; i++) {
+        array->entries[i] = array->entries[i + 1];
+    }
+
+    // Decrease the number of entries
+    array->n--;
+}
+
 /*Frees all dynamically allocated memory for EntryArray*/
 void free_entry_array(EntryArray* array){
     for(int i=0; i<array->n; i++){
@@ -209,7 +226,7 @@ void update_entry(Entry* entry, const char* field, char* value){
     }else if(strncmp(field, "Income", strlen("Income"))==0){ // Code for "Income" field
         // Identify subfield
         int subfield;
-        for(subfield=0; subfield<2; subfield++){
+        for(subfield=0; subfield<3; subfield++){
             if(strcmp(field, IncomeFields[subfield])==0){
                 break;
             }
@@ -366,6 +383,7 @@ void population_op(EntryArray* entries, char* field) {
     }
 }
 
+/*Percent Operation*/
 void percent_op(EntryArray* entries, char* field){
     // Total Mode operation
     unsigned long long population_total = 0;  // Total population count
@@ -408,6 +426,101 @@ void percent_op(EntryArray* entries, char* field){
     printf("2014 %s population: %.6f\n", field, result);
 }
 
+/*Filter-state Operation*/
+void filter_state_op(EntryArray *entries, char* state){
+    for(int i=0;i<entries->n;i++){
+        if(strcmp(entries->entries[i]->state, state)!=0){
+            // Remove entry if it does not match state
+            remove_entry(entries, i);
+            i--;
+        }
+    }
+    printf("Filter: state == %s (%d entries)\n", state, entries->n);
+}
+
+/*Check inequality between value and target
+Returns 1 if value is ge/le than target; Returns 0 if false */
+int match_inequality(float value, float target, char* inequality_str){
+    if(strcmp(inequality_str, "ge")==0){
+        return value-target >= 0;
+    }
+    else if(strcmp(inequality_str, "le")==0){
+        return value-target <= 0;
+    }
+    else{
+        return -1;
+    }
+}
+
+void filter_op(EntryArray *entries, char *field, char *inequality, char *number_str){    
+    // Parse Arguments
+    float number = str_to_float(number_str);
+
+    // Branch for every field:
+    if(strncmp(field, "Education", strlen("Education"))==0){ // Code for "Education Field"
+        // Identify subfield
+        int subfield;
+        for(subfield=0; subfield<2; subfield++){
+            if(strcmp(field, EducationFields[subfield])==0){
+                break;
+            }
+        }
+        for(int i=0; i<entries->n;i++){
+            if(!match_inequality(entries->entries[i]->education[subfield], number, inequality)){
+                //Remove entry if they do not match the inequality
+                remove_entry(entries, i);
+                i--;
+            }
+        }
+    }else if(strncmp(field, "Ethnicities", strlen("Ethnicities"))==0){ // Code for "Ethnicities" field
+        // Identify subfield
+        int subfield;
+        for(subfield=0; subfield<8; subfield++){
+            if(strcmp(field, EthnicitiesFields[subfield])==0){
+                break;
+            }
+        }
+        
+        for(int i=0; i<entries->n;i++){
+            if(!match_inequality(entries->entries[i]->ethnicities[subfield], number, inequality)){
+                //Remove entry if they do not match the inequality
+                remove_entry(entries, i);
+                i--;
+            }
+        }
+        
+    }else if(strncmp(field, "Income", strlen("Income"))==0){ // Code for "Income" field
+        // Identify subfield
+        int subfield;
+        for(subfield=0; subfield<3; subfield++){
+            if(strcmp(field, IncomeFields[subfield])==0){
+                break;
+            }
+        }
+
+        for(int i=0; i<entries->n;i++){
+            if(!match_inequality(entries->entries[i]->income[subfield], number, inequality)){
+                //Remove entry if they do not match the inequality
+                remove_entry(entries, i);
+                i--;
+            }
+        }
+        
+    }else if(strncmp(field, "Population.2014", strlen("Population.2014"))==0){ // Code for "Population.2014" field
+        for(int i=0; i<entries->n;i++){
+            if(!match_inequality(entries->entries[i]->population2014, number, inequality)){
+                //Remove entry if they do not match the inequality
+                remove_entry(entries, i);
+                i--;
+            }
+        }
+    }else{
+        perror("filter-state");
+        exit(1);
+    }
+
+    printf("Filter: %s %s %.6f (%d entries)\n", field, inequality, number, entries->n);
+}
 
 /*Parse operations from file_name to perform on entries*/
 void process_operations(char *file_name, EntryArray* entries){
@@ -438,10 +551,10 @@ void process_operations(char *file_name, EntryArray* entries){
         if (strcmp(line, "display") == 0) { // Display branch
 
         } else if (strncmp(line, "filter-state:", strlen("filter-state:")) == 0) { // Filter-state branch
-            printf("line: Filter by state abbreviation.\n");
+            filter_state_op(entries, arguments[1]);
 
         } else if (strncmp(line, "filter:", strlen("filter:")) == 0) { // Filter branch
-            printf("line: Filter by field with a comparison line.\n");
+            filter_op(entries, arguments[1], arguments[2], arguments[3]);
 
         } else if (strcmp(line, "population-total") == 0) { // Population total branch
             population_op(entries, NULL);
