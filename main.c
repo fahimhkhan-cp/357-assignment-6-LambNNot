@@ -366,6 +366,49 @@ void population_op(EntryArray* entries, char* field) {
     }
 }
 
+void percent_op(EntryArray* entries, char* field){
+    // Total Mode operation
+    unsigned long long population_total = 0;  // Total population count
+
+    for (int i = 0; i < entries->n; i++) {
+        population_total += entries->entries[i]->population2014;
+    }
+
+    // Field-specific operation
+    double result = 0;  // Total population count
+    double sub_population;
+    if (strncmp(field, "Education.", strlen("Education.")) == 0) {
+        int subfield;
+        for (subfield = 0; subfield < 2; subfield++) {
+            if (strcmp(field, EducationFields[subfield]) == 0) {
+                break;
+            }
+        }
+        for (int i = 0; i < entries->n; i++) {
+            sub_population = round(entries->entries[i]->population2014 * (entries->entries[i]->education[subfield] / 100.0));
+            result += (sub_population/population_total)*100;
+        }
+    } else if (strncmp(field, "Ethnicities.", strlen("Ethnicities.")) == 0) {
+        int subfield;
+        for (subfield = 0; subfield < 8; subfield++) {
+            if (strcmp(field, EthnicitiesFields[subfield]) == 0) {
+                break;
+            }
+        }
+        for (int i = 0; i < entries->n; i++) {
+            sub_population = round(entries->entries[i]->population2014 * (entries->entries[i]->ethnicities[subfield] / 100.0));
+            result += (sub_population/population_total)*100;
+        }
+    } else if (strcmp(field, "Income.Persons Below Poverty Level") == 0) {
+        for (int i = 0; i < entries->n; i++) {
+            sub_population = round(entries->entries[i]->population2014 * (entries->entries[i]->income[2] / 100.0));
+            result += (sub_population/population_total)*100;
+        }
+    }
+    printf("2014 %s population: %.6f\n", field, result);
+}
+
+
 /*Parse operations from file_name to perform on entries*/
 void process_operations(char *file_name, EntryArray* entries){
     //Open file
@@ -405,8 +448,10 @@ void process_operations(char *file_name, EntryArray* entries){
             
         } else if (strncmp(line, "population:", strlen("population:")) == 0) {
             population_op(entries, arguments[1]);
+
         } else if (strncmp(line, "percent:", strlen("percent:")) == 0) {
-            printf("line: Compute percentage of total population for a specific field.\n");
+            percent_op(entries, arguments[1]);
+            
         } else {
             printf("Error: Unsupported line '%s'.\n", line);
         }
