@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #define DATA_FILE_IDX 1
 #define OPS_FILE_IDX 2
@@ -15,7 +16,8 @@ const char* EthnicitiesFields[] = {"Ethnicities.American Indian and Alaska Nativ
                                     "Ethnicities.Black Alone",
                                     "Ethnicities.Hispanic or Latino",
                                     "Ethnicities.Native Hawaiian and Other Pacific Islander Alone",
-                                    "Ethnicities.Two or More Races","Ethnicities.White Alone",
+                                    "Ethnicities.Two or More Races",
+                                    "Ethnicities.White Alone",
                                     "Ethnicities.White Alone not Hispanic or Latino"};
 const char *IncomeFields[] = {"Income.Median Household Income",
                                 "Income.Per Capita Income",
@@ -30,7 +32,8 @@ const char* SignificantFields[] = {"County",
                                     "Ethnicities.Black Alone",
                                     "Ethnicities.Hispanic or Latino",
                                     "Ethnicities.Native Hawaiian and Other Pacific Islander Alone",
-                                    "Ethnicities.Two or More Races","Ethnicities.White Alone",
+                                    "Ethnicities.Two or More Races",
+                                    "Ethnicities.White Alone",
                                     "Ethnicities.White Alone not Hispanic or Latino", 
                                     "Income.Median Household Income",
                                     "Income.Per Capita Income",
@@ -41,7 +44,7 @@ typedef struct{
     char* county;
     char* state;
     float education[2];
-    float ethnicities[7];
+    float ethnicities[8];
     int income[3]; 
     int population2014;
 
@@ -81,7 +84,7 @@ Entry *create_entry(){
 void free_entry_array(EntryArray* array){
     for(int i=0; i<array->n; i++){
         // Free all dynamically allocated memory within each entry, followed by the entry itself
-        printf("Freeing: %s\n", array->entries[i]->county);
+        // printf("Freeing: %s\n", array->entries[i]->county);
         free(array->entries[i]->county);
         free(array->entries[i]->state);
         free(array->entries[i]);
@@ -138,19 +141,17 @@ char *dequote(char *string){
     return string;
 }
 
-/*Add a new entry to EntryArray*/
 void append_entry(EntryArray* array, Entry* new_entry){
-
-    //Return if new_entry is NULL
+    // Return if new_entry is NULL
     if(new_entry == NULL){
         return;
     }
     
-    //Check size
+    // Check size
     if(array->n == array->capacity){
         // Double array_entries capacity on resize
-        array->entries = realloc(array->entries, (array->capacity*=2));
-        if(array->entries==NULL){
+        array->entries = realloc(array->entries, (array->capacity *= 2) * sizeof(Entry*));
+        if(array->entries == NULL){
             perror("append_entry realloc");
             exit(1);
         }
@@ -158,6 +159,7 @@ void append_entry(EntryArray* array, Entry* new_entry){
     // Append new entry to end of array
     array->entries[array->n++] = new_entry;
 }
+
 
 /*Converts strings to float*/
 float str_to_float(char *string){
@@ -196,13 +198,14 @@ void update_entry(Entry* entry, const char* field, char* value){
     }else if(strncmp(field, "Ethnicities", strlen("Ethnicities"))==0){ // Code for "Ethnicities" field
         // Identify subfield
         int subfield;
-        for(subfield=0; subfield<2; subfield++){
+        for(subfield=0; subfield<8; subfield++){
             if(strcmp(field, EthnicitiesFields[subfield])==0){
                 break;
             }
         }
         //Convert value to a float to store in entry
         entry->ethnicities[subfield] = str_to_float(value);
+        // printf("Updated: %s to: %f\n", EthnicitiesFields[subfield], str_to_float(value)); //Debugging print
     }else if(strncmp(field, "Income", strlen("Income"))==0){ // Code for "Income" field
         // Identify subfield
         int subfield;
@@ -270,10 +273,10 @@ EntryArray* process_demographics(char *file_name, EntryArray* entries){
                 if(column == relevant_columns[field_index]){
                     // Relevant column identified
                     // printf("Field: %s | Column %d:  %s\n", SignificantFields[field_index], column, value);
-
-                    // TODO: Parsing Logic
-                    //printf("Updating: %s for %s\n", value, SignificantFields[field_index]);
                     update_entry(new_entry, SignificantFields[field_index], value);
+                    // for(int i=0; i<entries->n;i++){
+                    //     printf("%f\n", entries->entries[i]->ethnicities[7]);
+                    // }
                     field_index++;
                 }
             }
@@ -287,13 +290,131 @@ EntryArray* process_demographics(char *file_name, EntryArray* entries){
         // Append new entry
         append_entry(entries, new_entry);
     }
+
     // Close file
     fclose(file);
     return entries;
 }
 
+/*Return Significant Field index of valid population fields*/
+int valid_pop_field(EntryArray *entries, char *field){
+    if(strncmp(field, "Education.", strlen("Education."))==0){
+        for(int subfield=0;subfield<2;subfield++){
+            if(strcmp(field, EducationFields[subfield])==0){
+                return subfield+2;
+            }
+        }
+    }else if(strncmp(field, "Ethnicities.", strlen("Ethnicities."))==0){
+        for(int subfield=0;subfield<8;subfield++){
+            if(strcmp(field, EthnicitiesFields[subfield])==0){
+                return subfield+4;
+            }
+        }
+    }else if(strcmp(field, "Income.Persons Below Poverty Level")==0){
+        return 14;
+    }
+
+    return -1;
+}
+
+/* Population Operation */
+void population_op(EntryArray* entries, char* field) {
+    int total_mode = 0;  // Determines mode of the operation
+    if (field == NULL) {
+        // A NULL pointer turns on total_mode
+        total_mode = 1;
+    }
+
+    if (total_mode) {
+        // Total Mode operation
+        unsigned long long total = 0;  // Total population count
+
+        for (int i = 0; i < entries->n; i++) {
+            total += entries->entries[i]->population2014;
+        }
+
+        printf("2014 population: %llu\n", total);
+    } else {
+        // Field-specific operation
+        double total = 0;  // Total population count
+        if (strncmp(field, "Education.", strlen("Education.")) == 0) {
+            int subfield;
+            for (subfield = 0; subfield < 2; subfield++) {
+                if (strcmp(field, EducationFields[subfield]) == 0) {
+                    break;
+                }
+            }
+            for (int i = 0; i < entries->n; i++) {
+                total += round(entries->entries[i]->population2014 * (entries->entries[i]->education[subfield] / 100.0));
+            }
+        } else if (strncmp(field, "Ethnicities.", strlen("Ethnicities.")) == 0) {
+            int subfield;
+            for (subfield = 0; subfield < 8; subfield++) {
+                if (strcmp(field, EthnicitiesFields[subfield]) == 0) {
+                    break;
+                }
+            }
+            for (int i = 0; i < entries->n; i++) {
+                total += round(entries->entries[i]->population2014 * (entries->entries[i]->ethnicities[subfield] / 100.0));
+            }
+        } else if (strcmp(field, "Income.Persons Below Poverty Level") == 0) {
+            for (int i = 0; i < entries->n; i++) {
+                total += round(entries->entries[i]->population2014 * (entries->entries[i]->income[2] / 100.0));
+            }
+        }
+        printf("2014 %s population: %.6f\n", field, total);
+    }
+}
+
 /*Parse operations from file_name to perform on entries*/
 void process_operations(char *file_name, EntryArray* entries){
+    //Open file
+    FILE* file = fopen(file_name, "r");
+    if(file == NULL){
+        perror("operations fopen");
+        exit(1);
+    }
+
+    //Process file line-by-line
+    char line[2048]; 
+    while(fgets(line, sizeof(line), file) != NULL){
+        // Null Terminate Line
+        line[strcspn(line, "\n")] = '\0';
+
+        char *string_copy = strdup(line);
+        char *original_ptr = string_copy;
+
+        int argument_index = 0;
+        char* arguments[4] = {NULL}; //1: Operation, 2: 
+        char *token; //Stores tokens from strsep
+        while((token = strsep(&string_copy, ":"))!=NULL && argument_index < 4){
+            arguments[argument_index] = token;
+            argument_index++;
+        }
+
+        if (strcmp(line, "display") == 0) { // Display branch
+
+        } else if (strncmp(line, "filter-state:", strlen("filter-state:")) == 0) { // Filter-state branch
+            printf("line: Filter by state abbreviation.\n");
+
+        } else if (strncmp(line, "filter:", strlen("filter:")) == 0) { // Filter branch
+            printf("line: Filter by field with a comparison line.\n");
+
+        } else if (strcmp(line, "population-total") == 0) { // Population total branch
+            population_op(entries, NULL);
+            
+        } else if (strncmp(line, "population:", strlen("population:")) == 0) {
+            population_op(entries, arguments[1]);
+        } else if (strncmp(line, "percent:", strlen("percent:")) == 0) {
+            printf("line: Compute percentage of total population for a specific field.\n");
+        } else {
+            printf("Error: Unsupported line '%s'.\n", line);
+        }
+
+        free(original_ptr);
+    }
+    fclose(file);
+    
     return;
 }
 
@@ -314,6 +435,7 @@ int main(int argc, char* argv[]){
 
     //Process demographics file
     process_demographics(argv[DATA_FILE_IDX], entries_array);
+    printf("%d entries loaded\n", entries_array->n);
 
     //Process operations file
     process_operations(argv[OPS_FILE_IDX], entries_array);
