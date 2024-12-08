@@ -45,7 +45,8 @@ typedef struct{
     char* state;
     float education[2];
     float ethnicities[8];
-    int income[3]; 
+    int income[2]; 
+    float incomePovertyLevel;
     int population2014;
 
 }Entry;
@@ -72,9 +73,10 @@ Entry *create_entry(){
     for(int i=0;i<7;i++){
         new_entry->ethnicities[i] = 0.0;
     }
-    for(int i=0;i<3;i++){
+    for(int i=0;i<2;i++){
         new_entry->income[i] = 0;
     }
+    new_entry->incomePovertyLevel = 0.0;
     new_entry->population2014 = 0;
 
     return new_entry;
@@ -231,8 +233,13 @@ void update_entry(Entry* entry, const char* field, char* value){
                 break;
             }
         }
-        //Convert value to a float to store in entry
-        entry->income[subfield] = atoi(value);
+        if(subfield == 2){
+            entry->incomePovertyLevel = str_to_float(value);
+        }else{
+            //Convert value to a float to store in entry
+            entry->income[subfield] = atoi(value);
+        }
+
     }else if(strncmp(field, "Population.2014", strlen("Population.2014"))==0){ // Code for "Population.2014" field
         entry->population2014 = atoi(value);
     }else{
@@ -376,7 +383,7 @@ void population_op(EntryArray* entries, char* field) {
             }
         } else if (strcmp(field, "Income.Persons Below Poverty Level") == 0) {
             for (int i = 0; i < entries->n; i++) {
-                total += round(entries->entries[i]->population2014 * (entries->entries[i]->income[2] / 100.0));
+                total += round(entries->entries[i]->population2014 * (entries->entries[i]->incomePovertyLevel / 100.0));
             }
         }
         printf("2014 %s population: %.6f\n", field, total);
@@ -419,7 +426,7 @@ void percent_op(EntryArray* entries, char* field){
         }
     } else if (strcmp(field, "Income.Persons Below Poverty Level") == 0) {
         for (int i = 0; i < entries->n; i++) {
-            sub_population = round(entries->entries[i]->population2014 * (entries->entries[i]->income[2] / 100.0));
+            sub_population = round(entries->entries[i]->population2014 * (entries->entries[i]->incomePovertyLevel / 100.0));
             result += (sub_population/population_total)*100;
         }
     }
@@ -492,19 +499,29 @@ void filter_op(EntryArray *entries, char *field, char *inequality, char *number_
     }else if(strncmp(field, "Income", strlen("Income"))==0){ // Code for "Income" field
         // Identify subfield
         int subfield;
-        for(subfield=0; subfield<3; subfield++){
+        for(subfield=0; subfield<2; subfield++){
             if(strcmp(field, IncomeFields[subfield])==0){
                 break;
             }
         }
-
-        for(int i=0; i<entries->n;i++){
-            if(!match_inequality(entries->entries[i]->income[subfield], number, inequality)){
-                //Remove entry if they do not match the inequality
-                remove_entry(entries, i);
-                i--;
+        if(subfield==2){
+            for(int i=0; i<entries->n;i++){
+                if(!match_inequality(entries->entries[i]->incomePovertyLevel, number, inequality)){
+                    //Remove entry if they do not match the inequality
+                    remove_entry(entries, i);
+                    i--;
+                }
+            }
+        }else{
+            for(int i=0; i<entries->n;i++){
+                if(!match_inequality(entries->entries[i]->income[subfield], number, inequality)){
+                    //Remove entry if they do not match the inequality
+                    remove_entry(entries, i);
+                    i--;
+                }
             }
         }
+
         
     }else if(strncmp(field, "Population.2014", strlen("Population.2014"))==0){ // Code for "Population.2014" field
         for(int i=0; i<entries->n;i++){
@@ -520,6 +537,29 @@ void filter_op(EntryArray *entries, char *field, char *inequality, char *number_
     }
 
     printf("Filter: %s %s %.6f (%d entries)\n", field, inequality, number, entries->n);
+}
+
+void display_op(EntryArray* entries){
+    for(int i=0; i<entries->n; i++){
+        printf("%s, %s\n", entries->entries[i]->county, entries->entries[i]->state); //Print County & State
+        printf("\tPopulation: %d\n", entries->entries[i]->population2014); //Print Population
+        printf("\tEducation\n");
+        printf("\t\t>= High School: %.6f%%\n", entries->entries[i]->education[1]); //Print Education Highschool+
+        printf("\t\t>= Bachelor's: %.6f%%\n", entries->entries[i]->education[0]); //Print Education Highschool+
+        printf("\tEthnicity Percentages\n");
+        printf("\t\tAmerican Indian and Alaska Native: %.6f%%\n", entries->entries[i]->ethnicities[0]);
+        printf("\t\tAsian Alone: %.6f%%\n", entries->entries[i]->ethnicities[1]);
+        printf("\t\tBlack Alone: %.6f%%\n", entries->entries[i]->ethnicities[2]);
+        printf("\t\tHispanic or Latino: %.6f%%\n", entries->entries[i]->ethnicities[3]);
+        printf("\t\tNative Hawaiian and Other Pacific Islander Alone: %.6f%%\n", entries->entries[i]->ethnicities[4]);
+        printf("\t\tTwo or More Races: %.6f%%\n", entries->entries[i]->ethnicities[5]);
+        printf("\t\tWhite Alone: %.6f%%\n", entries->entries[i]->ethnicities[6]);
+        printf("\t\tWhite Alone, not Hispanic or Latino: %.6f%%\n", entries->entries[i]->ethnicities[7]);
+        printf("\tIncome\n");
+        printf("\t\tMedian Household: %d\n", entries->entries[i]->income[0]);
+        printf("\t\tPer Capita: %d\n", entries->entries[i]->income[1]);
+        printf("\t\tBelow Poverty Level: %.6f%%\n\n", entries->entries[i]->incomePovertyLevel);
+    }
 }
 
 /*Parse operations from file_name to perform on entries*/
@@ -549,6 +589,7 @@ void process_operations(char *file_name, EntryArray* entries){
         }
 
         if (strcmp(line, "display") == 0) { // Display branch
+            display_op(entries);
 
         } else if (strncmp(line, "filter-state:", strlen("filter-state:")) == 0) { // Filter-state branch
             filter_state_op(entries, arguments[1]);
